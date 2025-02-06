@@ -67,7 +67,8 @@ class DNSSrver
         int dnsQueryTranId  = dnsBuffer.getShort() & 0xFFFF;
         return dnsQueryTranId;
     }
-    public static byte[] createDNSRes(DatagramPacket packet,   String domainName) throws IOException
+
+    public static byte[] createResponse(DatagramPacket packet,  String domainName) throws IOException
     {
 
         ByteBuffer dnsResponseBuffer = ByteBuffer.allocate(512);
@@ -108,11 +109,53 @@ class DNSSrver
        return Arrays.copyOf(dnsResponseBuffer.array(), dnsResponseBuffer.position());
     }
 
-    public static String extractHostName(byte[] dnsQueryPacket) throws IOException
+    public static byte[] createNotFoundResponse(DatagramPacket packet,   String domainName) throws IOException
+    {
+
+        ByteBuffer dnsResponseBuffer = ByteBuffer.allocate(512);
+        
+        byte[] domainIPBytes = InetAddress.getByName(domainName).getAddress();
+        int    ipBytes[] = new int[4];
+        int i = 0 ;
+        for (byte ipByte: domainIPBytes)
+        {
+            ipBytes[i++] = (ipByte & 0xFF);
+        }
+
+        int transId = extractTranId(packet.getData());
+        
+       // Header section
+       dnsResponseBuffer.putShort((short) transId); // TransId
+       dnsResponseBuffer.putShort((short) 0x8183); // Flags (standard query response, domain not found error code.)
+       dnsResponseBuffer.putShort((short) 1);      // Questions
+       dnsResponseBuffer.putShort((short) 1);      // Answer RRs
+       dnsResponseBuffer.putShort((short) 0);      // Authority RRs
+       dnsResponseBuffer.putShort((short) 0);      // Additional RRs
+        // Question section
+        for (String part : domainName.split("\\."))
+        {
+            dnsResponseBuffer.put((byte) part.length());
+            dnsResponseBuffer.put(part.getBytes());
+        }
+        dnsResponseBuffer.put((byte) 0); // End of domain name
+        dnsResponseBuffer.putShort((short) 1); // Type A
+        dnsResponseBuffer.putShort((short) 1); // Class IN
+        // Answer section
+        dnsResponseBuffer.putShort((short) 0xC00C); // Name (C=12, position  domain name in question section)
+        dnsResponseBuffer.putShort((short) 1);      // Type A
+        dnsResponseBuffer.putShort((short) 1);      // Class IN
+        dnsResponseBuffer.putInt(3600);       // TTL (1 hour)
+        dnsResponseBuffer.putShort((short) 4);      // Data length
+        dnsResponseBuffer.put(new byte[]{(byte) ipBytes[0], (byte) ipBytes[1], (byte) ipBytes[2], (byte) ipBytes[3]});
+       return Arrays.copyOf(dnsResponseBuffer.array(), dnsResponseBuffer.position());
+    }
+
+
+    public static String extractDomainNames(byte[] dnsQueryPacket) throws IOException
     {
 
         ByteBuffer dnsByteBuffer = ByteBuffer.wrap(dnsQueryPacket);
-        dnsByteBuffer.position(12); // domain name starts here
+        dnsByteBuffer.position(12); // domain name starts here at position 12
         StringBuilder hostName = new StringBuilder();
         int len;
         while(true)
@@ -130,45 +173,35 @@ class DNSSrver
             }
             hostName.append(new String(label));
         }
-
-
         return hostName.toString();
     }
     public static void main(String[] args) throws IOException
     {
     
-       String domainName = "awesomesoftware.online";
+       String myDomainName = "awesomesoftware.online";
        DatagramPacket packet;
        DatagramSocket socket;
        socket = new DatagramSocket(53);
        packet = new DatagramPacket(new byte[65530],65530 );
        packet.setLength(65530); 
        System.out.println("Local DNS Server is listeing on port 53");
-       
+       byte[] dnsResponse = null;
        while (true) 
        {
-        
            socket.receive(packet);  
            InetAddress client_ip = packet.getAddress();
            int client_port = packet.getPort();
-
-           String hostNames = extractHostName(packet.getData());
-           System.out.println("DNS Hosts: " + hostNames);
-           byte[] dnsResponse = null;
-           if (hostNames.indexOf("awesomesoftware.online") > 0)
+           String domainNames = extractDomainNames(packet.getData());  
+           if (domainNames.matches(myDomainName))
            {
-               //byte[] dnsResponse =  DNSSrver.createDNSRes(packet,domainName);
-                dnsResponse =  DNSSrver.createDNSRes(packet,domainName);
+                dnsResponse =  DNSSrver.createResponse(packet,myDomainName);
            }
            else
            {
-                dnsResponse =  DNSSrver.createDNSRes(packet,domainName);
+                dnsResponse =  DNSSrver.createNotFoundResponse(packet,myDomainName);
            }
-           
-          
            packet = new DatagramPacket(dnsResponse,dnsResponse.length, client_ip,client_port);        
            socket.send(packet);
-          // prnName(packet);
          }
     }
 }
