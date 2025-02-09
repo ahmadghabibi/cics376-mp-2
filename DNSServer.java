@@ -9,7 +9,6 @@ import java.io.*;
 
 class DNSSrver
 {
-    
     public static String extractDomainNames(byte[] dnsQueryPacket) throws IOException
     {
         ByteBuffer dnsByteBuffer = ByteBuffer.wrap(dnsQueryPacket); // create byte byfferArray
@@ -43,13 +42,11 @@ class DNSSrver
     public static void prnDNSHeader(DatagramPacket packet )
     {
         byte[] query = packet.getData();
-        InetAddress client_ip = packet.getAddress();
         int client_port = packet.getPort();
     
          System.out.println("User Datagram Protocol Src port 53, Dest port " +  client_port);
 
         // Header is 12 bytes
-        System.out.println("Domain Name System query");
         System.out.printf("Trans Id: 0x%02X%02X\n ",query[0],query[1]);
         System.out.printf("Flags: 0x%02X%02X\n ",query[2],query[3]);
         System.out.printf("Questions: %d\n",(query[4] << 8 ) | query[5]);
@@ -58,42 +55,11 @@ class DNSSrver
         System.out.printf("Additional RRs: %d\n",(query[10] << 8 ) | query[11]);
     }
  
-    public static int printDNSName(byte bytes[], int start)
+    public static void  printDNSPacket(DatagramPacket packet) throws IOException
     {
-       
-        int pos = start;
-        while (bytes[pos] != 0)
-         {
-            if (pos != start) 
-            {
-                System.out.print(".");
-            } 
-            int length = bytes[pos];
-            // POINTER!  We recursively print from a different place in the packet
-            if (length == -64) {
-                int pos2 = bytes[pos+1] & 0xFF;
-                printDNSName(bytes, pos2);
-                pos++;
-                break;
-    
-            // Otherwise the "length" is the number of characters in this part of
-            // name.
-            } else {
-                for (int i=1; i<=length; i++) {
-                    System.out.print((char)bytes[pos+i]);
-                }
-                pos += length+1;
-            }
-        }
-        pos ++;
-        System.out.println("");
-        return pos;
-    }
-    public static void  printDNSPacket(DatagramPacket packet) 
-    {
-       int domainNameStartPos = 12 ;
+       System.out.println("------------------ query request Header------------------------------------------");
        prnDNSHeader(packet);
-       printDNSName(packet.getData(),domainNameStartPos);
+       System.out.println(extractDomainNames(packet.getData()));
       
     }
 
@@ -159,7 +125,7 @@ class DNSSrver
        rcvPacket.setLength(65530); 
        udpSendPacket = new DatagramPacket(new byte[65530],65530 );
        udpSendPacket.setLength(65530); 
-       System.out.println("Local DNS Server is Listening on port 53");
+       System.out.println("Local DNS Server is Running...........");
     
        while (true) 
        {
