@@ -9,69 +9,64 @@ import java.io.*;
 
 class DNSSrver
 {
-    public static boolean searchForMydomain(byte[] dnsQueryPacket, String myDomainName) throws IOException
+    public static boolean reqForMydomain(byte[] dnsQueryPacket, String myDomainName) throws IOException
     {
         ByteBuffer dnsByteBuffer = ByteBuffer.wrap(dnsQueryPacket); 
-        dnsByteBuffer.position(12); // length of domain name is stored at this position
         StringBuilder domainName =  new StringBuilder();
         int len;
-        boolean endDomain = false;
         boolean found = false;
+        dnsByteBuffer.position(12);
         while(true)
         {    
-            len = dnsByteBuffer.get() & 0xFF;   // get domain name len or len of label after domain name . move pointer forward
+            len = dnsByteBuffer.get() & 0xFF;
             if (len ==0 || found)
             {   
-                break;   //End of domain name
+                break;
             }
             byte[] label = new byte[len];
             dnsByteBuffer.get(label);
             if(domainName.length() > 0)
             {
                 domainName.append(".");
-                endDomain = true;
-            }
-            domainName.append(new String(label));
-            if (endDomain)
-            {
-                 if (domainName.toString().matches(myDomainName))
-                 {
+                domainName.append(new String(label));
+                if (domainName.toString().matches(myDomainName))
+                {
                     found = true;
-                 }
+                }
                 domainName  = new StringBuilder();
-                endDomain = false;
-            }  
+            }
+            else
+            {
+                domainName.append(new String(label));
+            }
         }
         return found;
     }
     public static void prnDomainNames(byte[] dnsQueryPacket) throws IOException
     {
         ByteBuffer dnsByteBuffer = ByteBuffer.wrap(dnsQueryPacket); 
-        dnsByteBuffer.position(12); // length of domain name is stored at this position
         StringBuilder domainName =  new StringBuilder();
         int len;
-        boolean endDomain = false;
+        dnsByteBuffer.position(12); // pos of length of domain 
         while(true)
         {    
-            len = dnsByteBuffer.get() & 0xFF;   // get domain name len or len of label after domain name . move pointer forward
+            len = dnsByteBuffer.get() & 0xFF;   // get len of label. move pointer forward
             if (len ==0)
             {   
-                break;   //End of domain name
+                System.out.println( domainName.toString());
+                break;   //End of domain
             }
             byte[] label = new byte[len];
             dnsByteBuffer.get(label);
             if(domainName.length() > 0)
             {
                 domainName.append(".");
-                endDomain = true;
+                domainName.append(new String(label));
             }
-            domainName.append(new String(label));
-            if (endDomain)
+            else
             {
-                System.out.println( domainName.toString());
-                domainName  = new StringBuilder();
-                endDomain = false;
-            }  
+                domainName.append(new String(label));
+            }
         }
     }
     public static int extractTranId(byte[] dnsQuery)
@@ -101,17 +96,17 @@ class DNSSrver
        prnDomainNames(packet.getData());
     }
 
-    public static byte[] createResponse(DatagramPacket packet,  String myDomainName) throws IOException
+    public static byte[] createResponse(DatagramPacket packet,  String myDomain) throws IOException
     {
         ByteBuffer dnsResponseBuffer = ByteBuffer.allocate(512);
         int responseCode = 0 ;
         int    MyDomainIP[] = new int[4];
         int i = 0 ;
-        byte[] domainIPBytes = InetAddress.getByName(myDomainName).getAddress();
+        byte[] domainIPAddress = InetAddress.getByName(myDomain).getAddress();
         int transId = extractTranId(packet.getData());
-        if (searchForMydomain(packet.getData(), myDomainName))
+        if (reqForMydomain(packet.getData(), myDomain))
         {
-            for (byte ipByte: domainIPBytes)
+            for (byte ipByte: domainIPAddress)
             {
                 MyDomainIP[i++] = (ipByte & 0xFF);
             }
@@ -131,7 +126,7 @@ class DNSSrver
        dnsResponseBuffer.putShort((short) 0);      // Authority RRs
        dnsResponseBuffer.putShort((short) 0);      // Additional RRs
         // Question section
-        for (String part : myDomainName.split("\\."))
+        for (String part : myDomain.split("\\."))
         {
             dnsResponseBuffer.put((byte) part.length());
             dnsResponseBuffer.put(part.getBytes());
@@ -140,7 +135,7 @@ class DNSSrver
         dnsResponseBuffer.putShort((short) 1); // Type A
         dnsResponseBuffer.putShort((short) 1); // Class IN
         // Answer section
-        dnsResponseBuffer.putShort((short) 0xC00C); // Name (C=12, domain name  address)
+        dnsResponseBuffer.putShort((short) 0xC00C); // Name (C=12, domain length  address)
         dnsResponseBuffer.putShort((short) 1);      // Type A
         dnsResponseBuffer.putShort((short) 1);      // Class IN
         dnsResponseBuffer.putInt(3600);       // TTL (1 hour)
@@ -153,7 +148,7 @@ class DNSSrver
     public static void main(String[] args) throws IOException
     {
     
-       String myDomainName = "awesomesoftware.online";
+       String myDomain = "awesomesoftware.online";
        DatagramPacket rcvPacket;
        DatagramPacket udpSendPacket;
        byte[] dnsResponsePacket;
@@ -163,15 +158,13 @@ class DNSSrver
        rcvPacket.setLength(65530); 
        udpSendPacket = new DatagramPacket(new byte[65530],65530 );
        udpSendPacket.setLength(65530); 
-       System.out.println("Local DNS Server for --- awesomesoftware.online --- is up &  Running");
+       System.out.println("Local DNS Server for --- " + myDomain + " --- is up &  Running");
 
-       while (true) 
-       {
+        while (true) 
+        {
            socket.receive(rcvPacket);  
-           InetAddress client_ip = rcvPacket.getAddress();
-           int client_port = rcvPacket.getPort();
-           dnsResponsePacket =  DNSSrver.createResponse(rcvPacket,myDomainName);
-           udpSendPacket = new DatagramPacket(dnsResponsePacket,dnsResponsePacket.length, client_ip,client_port);        
+           dnsResponsePacket =  DNSSrver.createResponse(rcvPacket,myDomain);
+           udpSendPacket = new DatagramPacket(dnsResponsePacket,dnsResponsePacket.length, rcvPacket.getAddress(), rcvPacket.getPort());        
            socket.send(udpSendPacket);      
            DNSSrver.printDNSPacket(rcvPacket) ;    
         }
